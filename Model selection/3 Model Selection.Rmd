@@ -1,0 +1,548 @@
+---
+title: "3 Model selection"
+author: "Chong Kwek Yan"
+date: "20 December 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load data
+
+Feel free to use your own data, as long as it is in an appropriate format and structure for analysis.
+
+Otherwise, here is an example dataset from our published paper:
+
+Yeo, H.H.T., K.Y. Chong, A.T.K. Yee, X. Giam, R.T. Corlett & H.T.W. Tan. 2014. Leaf litter depth as an important factor inhibiting seedling establishment of an exotic palm in tropical secondary forest patches. Biological Invasions 16: 381-392. https://link.springer.com/article/10.1007%2Fs10530-013-0527-7
+
+```{r}
+palm<-read.csv("palm.csv", header = TRUE)
+```
+
+Briefly, `r nrow(palm)` transects were established in `r length(levels(palm$fragment))` forest patches. The number of macarthur palm ( _Ptychosperma macarthurii_ ) seedings were counted in each transect. The following environmental variables were also quantified: `r paste(names(palm)[9:19], collapse = ", ")`.
+
+Remember that, before fitting any model, it is best practice to center and scale all the predictors:
+```{r}
+palm_env_unscaled<-palm[,9:17]
+
+palm[,9:17]<-apply(palm[,9:17], 2, scale)
+```
+
+
+## A "full model"
+
+We're interested to know if macarthur palm seedling density is associated with the variables in a multipled regression model. Let's fit a "full model" with all the variables.
+
+```{r}
+palm_lm_full<-lm(seedling ~ canopy + litter + pH + moisture + sand + silt + clay + N + P + K + species.richness, data = palm)
+```
+
+That's `r 19-9+1` variables! But ignore that for now. Let's look at the model summary.
+
+```{r}
+summary(palm_lm_full)
+```
+
+Why is the variable `clay` `NA`?
+
+Let's drop clay for now.
+
+```{r}
+palm_lm_full_1<-update(palm_lm_full, ~.-clay)
+summary(palm_lm_full_1)
+```
+
+## Recap: model diagnostics
+
+Let's check the histogram of the residuals:
+
+```{r}
+hist(residuals(palm_lm_full_1))
+```
+
+
+and the residual plot:
+
+```{r}
+plot(palm_lm_full_1$residuals ~ palm_lm_full_1$fitted.values)
+abline(h = 1, lty = 2)
+```
+
+The residuals suggest some right-skew, a bad case of heteroscedasticity, and probably curvilinearity. It's obvious why: seedling density is in terms of numbers of seedlings, which is a count variable, therefore lower-bounded by zero, and also variance will increase with the seedling count.
+
+The solution is to log-transform the response variable.
+
+```{r}
+palm_lm_full_2<-lm(log(seedling+0.5) ~ canopy + litter + pH + moisture + sand + silt + N + P + K + species.richness, data = palm)
+
+par(mfrow=c(1,2))
+hist(residuals(palm_lm_full_2))
+plot(palm_lm_full_2$residuals ~ palm_lm_full_2$fitted.values); abline(h = 1, lty = 2)
+```
+
+Both plots are better, and the histogram is probably good enough, but the residual plot shows one problem. What is it?
+
+Again, let's ignore this for now, and go back to the topic of the day: model selection.
+
+## Recap: Stepwise, or _hierarchical_, model selection
+
+We now have `r length(palm_lm_full_2$coef)-1` variables, still. But we only have a sample size of `r nrow(palm)` transects. This is _over-fitting_.
+
+One option is to drop the variables one-by-one starting from the "full model". This is often called the _backwards stepwise_ model selection method.
+
+We start by dropping the variable with the "least significant" _p_-value. In the summary table above, this was apparently `canopy`, according the Wald t-tests that are the default test statistic.
+
+```{r}
+anova(update(palm_lm_full_2, ~.-canopy), palm_lm_full_2)
+```
+
+Note that the p-value is different. The safe bet is to use the test result from `anova()`, which is more "accurate".
+
+```{r results='hold'}
+anova(update(palm_lm_full_2, ~.-canopy), palm_lm_full_2)$P[2]
+anova(update(palm_lm_full_2, ~.-litter), palm_lm_full_2)$P[2]
+anova(update(palm_lm_full_2, ~.-pH), palm_lm_full_2)$P[2]
+anova(update(palm_lm_full_2, ~.-moisture), palm_lm_full_2)$P[2]
+anova(update(palm_lm_full_2, ~.-sand), palm_lm_full_2)$P[2]
+anova(update(palm_lm_full_2, ~.-silt), palm_lm_full_2)$P[2]
+anova(update(palm_lm_full_2, ~.-N), palm_lm_full_2)$P[2]
+anova(update(palm_lm_full_2, ~.-P), palm_lm_full_2)$P[2]
+anova(update(palm_lm_full_2, ~.-K), palm_lm_full_2)$P[2]
+anova(update(palm_lm_full_2, ~.-species.richness), palm_lm_full_2)$P[2]
+```
+
+The "least significant" p-value is actually `species.richness`. Let's use that to continue dropping:
+
+```{r results='hold'}
+palm_lm_1<-update(palm_lm_full_2, ~.-species.richness)
+
+anova(update(palm_lm_1, ~.-canopy), palm_lm_1)$P[2]
+anova(update(palm_lm_1, ~.-litter), palm_lm_1)$P[2]
+anova(update(palm_lm_1, ~.-pH), palm_lm_1)$P[2]
+anova(update(palm_lm_1, ~.-moisture), palm_lm_1)$P[2]
+anova(update(palm_lm_1, ~.-sand), palm_lm_1)$P[2]
+anova(update(palm_lm_1, ~.-silt), palm_lm_1)$P[2]
+anova(update(palm_lm_1, ~.-N), palm_lm_1)$P[2]
+anova(update(palm_lm_1, ~.-P), palm_lm_1)$P[2]
+anova(update(palm_lm_1, ~.-K), palm_lm_1)$P[2]
+```
+
+Next to drop is `N`.
+
+```{r results='hold'}
+palm_lm_2<-update(palm_lm_1, ~.-N)
+
+anova(update(palm_lm_2, ~.-canopy), palm_lm_1)$P[2]
+anova(update(palm_lm_2, ~.-litter), palm_lm_1)$P[2]
+anova(update(palm_lm_2, ~.-pH), palm_lm_1)$P[2]
+anova(update(palm_lm_2, ~.-moisture), palm_lm_1)$P[2]
+anova(update(palm_lm_2, ~.-sand), palm_lm_1)$P[2]
+anova(update(palm_lm_2, ~.-silt), palm_lm_1)$P[2]
+anova(update(palm_lm_2, ~.-P), palm_lm_1)$P[2]
+anova(update(palm_lm_2, ~.-K), palm_lm_1)$P[2]
+```
+
+Next to drop is `P`.
+
+```{r results='hold'}
+palm_lm_3<-update(palm_lm_2, ~.-P)
+
+anova(update(palm_lm_3, ~.-canopy), palm_lm_2)$P[2]
+anova(update(palm_lm_3, ~.-litter), palm_lm_2)$P[2]
+anova(update(palm_lm_3, ~.-pH), palm_lm_2)$P[2]
+anova(update(palm_lm_3, ~.-moisture), palm_lm_2)$P[2]
+anova(update(palm_lm_3, ~.-sand), palm_lm_2)$P[2]
+anova(update(palm_lm_3, ~.-silt), palm_lm_2)$P[2]
+anova(update(palm_lm_3, ~.-K), palm_lm_2)$P[2]
+```
+
+Now it's `canopy`'s turn.
+
+```{r results='hold'}
+palm_lm_4<-update(palm_lm_3, ~.-canopy)
+
+anova(update(palm_lm_4, ~.-litter), palm_lm_3)$P[2]
+anova(update(palm_lm_4, ~.-pH), palm_lm_3)$P[2]
+anova(update(palm_lm_4, ~.-moisture), palm_lm_3)$P[2]
+anova(update(palm_lm_4, ~.-sand), palm_lm_3)$P[2]
+anova(update(palm_lm_4, ~.-silt), palm_lm_3)$P[2]
+anova(update(palm_lm_4, ~.-K), palm_lm_3)$P[2]
+```
+
+Next, `sand`.
+
+```{r results='hold'}
+palm_lm_5<-update(palm_lm_4, ~.-sand)
+
+anova(update(palm_lm_5, ~.-litter), palm_lm_4)$P[2]
+anova(update(palm_lm_5, ~.-pH), palm_lm_4)$P[2]
+anova(update(palm_lm_5, ~.-moisture), palm_lm_4)$P[2]
+anova(update(palm_lm_5, ~.-silt), palm_lm_4)$P[2]
+anova(update(palm_lm_5, ~.-K), palm_lm_4)$P[2]
+```
+
+Next, `moisture`.
+
+```{r results='hold'}
+palm_lm_6<-update(palm_lm_5, ~.-moisture)
+
+anova(update(palm_lm_6, ~.-litter), palm_lm_5)$P[2]
+anova(update(palm_lm_6, ~.-pH), palm_lm_5)$P[2]
+anova(update(palm_lm_6, ~.-silt), palm_lm_5)$P[2]
+anova(update(palm_lm_6, ~.-K), palm_lm_5)$P[2]
+```
+
+Next, `silt`.
+
+```{r results='hold'}
+palm_lm_7<-update(palm_lm_6, ~.-silt)
+
+anova(update(palm_lm_7, ~.-litter), palm_lm_6)$P[2]
+anova(update(palm_lm_7, ~.-pH), palm_lm_6)$P[2]
+anova(update(palm_lm_7, ~.-K), palm_lm_6)$P[2]
+```
+
+Next, `pH`.
+
+```{r results='hold'}
+palm_lm_8<-update(palm_lm_7, ~.-pH)
+
+anova(update(palm_lm_8, ~.-litter), palm_lm_7)$P[2]
+anova(update(palm_lm_8, ~.-K), palm_lm_7)$P[2]
+```
+
+Next, `K`.
+
+```{r}
+anova(palm_lm_9<-update(palm_lm_8, ~.-K), palm_lm_8)
+```
+
+The only thing left is litter:
+
+```{r}
+anova(palm_lm_10<-update(palm_lm_9, ~.-litter), palm_lm_9)
+```
+
+Litter was the only variable that was significant!
+
+There is also _forward_ stepwise model selection, i.e., adding variables sequentially from a null model, and stopping when no other model added will be significant. There is also backwards-and-forwards stepwise model selection...
+
+## An alternative to stepwise/hierarchical model selection with p-values
+
+Stepwise model selection, whether backwards or forwards or whatever, has some problems.
+
+1. Many, many tests are being carried out, step-by-step. This bothers people who are concerned about multiple-testing leading to Type I error inflation.
+2. Hierarchical model testing can only compare two models at one time, and all the variables in the simpler model _must_ be present in the more complex model, i.e. the variables in the simpler model is a nested subset of the variables in the more complex model. You cannot compare two non-nested models.
+3. Once the number of possible variables in a model exceeds a certain number (about four), there are models which may be missed on the way backwards or forwards that may be the best model.
+4. It is not rational that there is only one final model that is the best model. There could be other models which are (almost as) good.
+
+One additional issue is that the full model could be an overfitted model, as in our case. There are two solutions:
+
+a. Do forwards selection instead (but may not be the same best model as from backwards!).
+b. Start with simpler models that are not over-fitted. E.g., with a rule-of-thumb of $^n/_k<10$, we should have only five predictors at maximum. But there are $\binom{10}{5}$ = 252 possible models to start working backwards from!
+
+### Akaike's information criterion
+
+First, if we are to move away from using p-values, we need new criteria for measuring how good a model is. One way is to estimate the _information content_ of a model. Measures developed (from _Information Theory_) to do this are called _Information-Theoretic Criteria_. The most commonly used criterion was developed by Hirotugu Akaike.
+
+$$AIC = -2 \ln L + 2k$$
+
+where L is the estimated 'Likelihood' of the model. Ignore this idea of Likelihood for now; for linear regression, the AIC formula is
+
+$$AIC = n \ln RSS + 2k$$
+where RSS is the residual sum-of-squares. $k$ is the number of estimated parameters, which is the number of predictors (because a coefficient is estimated for each predictor), plus one for the intercept and one for the variance of the model, because these two are also estimated.
+
+Because we are only taught _p_-value-based testing of null-hypothesis, we need some background information on what AIC is. At minimum, you need to know that:
+
+1. The 'information content' of a model that AIC is supposed to measure is a metric that tells us how different a given model is from 'the true model' that produced the data.
+2. This information content is composed of two parts:
+  a. The first term, $-2 \ln L$ or $n \ln RSS$, is a measure of the _goodness-of-fit_ of the model. It is the total amount of variance remaining after fitting the model.
+  b. The second term, $2k$, is a penalty for the complexity of the model. In a regression model, the more predictor terms there are, the more complex the model is.
+
+The lower the AIC, the better the information content. Therefore, either the variance decreases, or the model is less complex. Also note that AIC can be negative.
+
+Luckily for us, AIC can be easily extracted from R. Let's compare a set of simple, single-variable models.
+
+```{r results="hide"}
+(palm_lm_aic_tab<-AIC(
+  lm(log(seedling+0.5)~canopy, data=palm),
+  lm(log(seedling+0.5)~litter, data=palm),
+  lm(log(seedling+0.5)~pH, data=palm),
+  lm(log(seedling+0.5)~moisture, data=palm),
+  lm(log(seedling+0.5)~sand, data=palm),
+  lm(log(seedling+0.5)~silt, data=palm),
+  lm(log(seedling+0.5)~N, data=palm),
+  lm(log(seedling+0.5)~P, data=palm),
+  lm(log(seedling+0.5)~K, data=palm),
+  lm(log(seedling+0.5)~species.richness, data=palm)
+))
+```
+```{r results="asis", echo=FALSE}
+knitr::kable(palm_lm_aic_tab)
+```
+
+Remember: the lower the AIC, the better the information content. The model with `litter` as the predictor is clearly the best model.
+
+But note that AIC needs to be "corrected for small sample sizes":
+
+$$AIC_c = AIC + \frac{2k^2+2k}{n-k-1}$$
+
+Remember that $k$ is the number of terms in the model, _including the intercept term and the variance term_. In later sessions in this workshop series, you will learn about mixed-effects models, and you have to add one for each _random effect_ because one variance term is estimated for each random effect.
+
+Because these are all 'simple' models, they have $k$ = 1 + 1 + 1 = 3.
+
+```{r results="hide"}
+palm_lm_aic_tab$AICc<-with(palm_lm_aic_tab, AIC+(2*df^2+2*df)/(nrow(palm)-df-1))
+palm_lm_aic_tab
+```
+```{r results="asis", echo=FALSE}
+knitr::kable(palm_lm_aic_tab)
+```
+
+Another thing important to note is that AIC, corrected or otherwise, can only be used to compare models of the _same set of response variables_. For example, we cannot use it to compare models before and after log-transforming the seedling count. See:
+
+```{r eval=FALSE}
+AIC(
+  lm(seedling~canopy, data=palm),
+  lm(seedling~litter, data=palm),
+  lm(seedling~pH, data=palm),
+  lm(seedling~moisture, data=palm),
+  lm(seedling~sand, data=palm),
+  lm(seedling~silt, data=palm),
+  lm(seedling~N, data=palm),
+  lm(seedling~P, data=palm),
+  lm(seedling~K, data=palm),
+  lm(seedling~species.richness, data=palm)
+)
+```
+```{r results="asis", echo=FALSE}
+knitr::kable(AIC(
+  lm(seedling~canopy, data=palm),
+  lm(seedling~litter, data=palm),
+  lm(seedling~pH, data=palm),
+  lm(seedling~moisture, data=palm),
+  lm(seedling~sand, data=palm),
+  lm(seedling~silt, data=palm),
+  lm(seedling~N, data=palm),
+  lm(seedling~P, data=palm),
+  lm(seedling~K, data=palm),
+  lm(seedling~species.richness, data=palm)
+))
+```
+
+The AIC is much higher, but only because seedling counts are much larger in value than the logarithm of seedling counts.
+
+Similarly, if you were to remove certain data points and run the model again, you cannot use AIC to compare the two models and conclude that one is better. The smaller dataset will have less total variance, and will always have lower AIC!
+
+So you cannot use AIC to see if transforming the response or removing an outlier, etc., led to better model fit.
+
+### Multi-model inference
+
+With AIC (or rather, $AIC_c$) as a measure, we are able to compare multiple models simultaneously and assess how good each of them are relative to a (hypothetical) 'true model'. This is called model ranking. Since the model with the lowest $AIC_c$ is the best model, the $AIC_c$ of the other models can be expressed relative to it, i.e.,
+
+$$\Delta AIC_c = AIC_c - min(AIC_c)$$
+
+Let's calculate this:
+
+```{r}
+(palm_lm_aic_tab$dAICc<-with(palm_lm_aic_tab, AICc-min(AICc)))
+```
+
+Note at this point that any two models within 2 $AIC_c$ points of each other differs from the equivalent of increasing the complexity, i.e., $k$, by one parameter.
+
+To translate this to a scale that is more easily understood, we can calculate the relative likelihood, $rL$, of each model being the best model among the set of models being considered:
+$$rL = e^{-0.5 \Delta AIC_c}$$
+
+```{r}
+(palm_lm_aic_tab$rL<-exp(-0.5*palm_lm_aic_tab$AICc))
+```
+
+If only models in this set are competing to be the best model, then the probability of any model $i$ being the best model based on its $rL_i$ is;
+
+$$w_i = \frac {rL_i}{\sum rL}$$
+```{r}
+(palm_lm_aic_tab$w<-with(palm_lm_aic_tab, rL/sum(rL)))
+```
+
+What we should do is to rank the models in decreasing $w$, which is equvalient to decreasing $rL$ and increasing $\Delta AIC_c$:
+
+```{r eval=FALSE}
+palm_lm_aic_tab[order(palm_lm_aic_tab$w, decreasing = TRUE),]
+```
+```{r results="asis", echo=FALSE}
+knitr::kable(palm_lm_aic_tab[order(palm_lm_aic_tab$w, decreasing = TRUE),])
+```
+
+1. Among these simple models, the model with `litter` as the predictor has 99.9998% chance of being the best model.
+2. The best model will always have $\Delta AIC_c$ of zero and $rL$ of unity.
+3. The model with `litter` as the predictor is $\frac{1}{1.184637 \times 10^-6} = 844,140.4 \times$ better than the second-best model with `K` as the predictor, and so on. (Note that the _p_-values from testing null hypotheses have a different interpretation and so cannot be compared in this way.)
+
+With multi-model inference using AIC, we are able to compare non-nested models simultaneously and rank them in terms of their probability to be the best model. This solves three of the four problems with stepwise model selection.
+
+The last problem is to search through all the possible models and find the best one. However, there are $2^k$ possible combinations of _k_ variables. With ten variables this give 1024 _candidate models_. It would be very painful to type each model out one-by-one.
+
+Luckily, to do this easily, we can use the `{MuMIn}` package.
+
+```{r}
+library(MuMIn)
+```
+
+For our purposes, it's just one function.
+
+```{r}
+palm_lm_aic_tab_1<-dredge(
+  lm(log(seedling +0.5) ~ canopy + litter + pH + moisture + sand + silt + N + P + K + species.richness, data = palm, na.action = "na.pass")
+)
+```
+
+Although now we are free from the restriction of a single best model, we still have to decide a cut-off to define a best _set_ of models. We will use $\Delta AIC_c < 2$ as the cut-off.
+
+```{r eval=FALSE}
+subset(data.frame(palm_lm_aic_tab_1), delta < 2)
+```
+```{r results="asis", echo=FALSE}
+knitr::kable(subset(data.frame(palm_lm_aic_tab_1), delta < 2))
+```
+
+There seems to be many 'best models' and the _w_ of each model is somewhat low, from 2.1 - 5.6 %. Therefore there is a lot of uncertainty regarding which is the best model.
+
+One reason is that we are comparing many many models. Remember: we used all possible subsets of the full model. In any case, many of the candidate models are actually overfitted. What we can do is to set a limit on the number of parameters in a model. Here, keeping $^n/_k$ to < 10, let's set the limit of $k$ to 4.
+
+Also, it's a good practice to show the explanatory power, i.e., the R^2^ of each model. This is conveniently done through the `extra = ` argument.
+
+```{r}
+palm_lm_aic_tab_2<-dredge(
+  lm(log(seedling +0.5) ~ canopy + litter + pH + moisture + sand + silt + N + P + K + species.richness, data = palm, na.action = "na.pass"), m.lim = c(0, 4), extra = "R^2"
+)
+```
+
+```{r eval=FALSE}
+subset(data.frame(palm_lm_aic_tab_2), delta < 2)
+```
+```{r results="asis", echo=FALSE}
+knitr::kable(subset(data.frame(palm_lm_aic_tab_2), delta < 2))
+```
+
+There are now only `r nrow(palm_lm_aic_tab_2)` candidate models with this restriction There is a small improvement in the _w_ of the best models, but not much. The overfitted models were probably poorly ranked models anyway. Also, the number of models with $\Delta AIC_c < 2$ has not changed--because the best models already have < 5 terms.
+
+More rules can be set for the candidate model set. For example, We can set it that once one of sand, silt, or clay is present in a model, the other two variables will not be.
+
+```{r}
+palm_lm_aic_tab_3<-dredge(
+  lm(log(seedling +0.5) ~ canopy + litter + pH + moisture + sand + silt + clay + N + P + K + species.richness, data = palm, na.action = "na.pass"),
+  m.lim = c(0, 4), subset = !(sand&silt) & !(silt&clay) & !(sand&clay), extra = "R^2"
+)
+```
+
+```{r eval=FALSE}
+subset(data.frame(palm_lm_aic_tab_3), delta < 2)
+```
+```{r results="asis", echo=FALSE}
+knitr::kable(subset(data.frame(palm_lm_aic_tab_3), delta < 2))
+```
+
+Note that there are more models in the best set, and the model uncertainty has _generally_ worsened. This is becase we have re-introduced clay as a variable, therefore increasing the number of possible models, and since clay, sand, and silt are all related, their effects in the models are quite similar.
+
+Subsetting rules can also allow you to include, in the candidate model set, models with interaction terms when all the first order terms of the interaction are also present. This is using the 'dependency chain' function `dc(X1&X2, X1:X2)` in the `subset` argument. At the end of this document, I briefly demonstrate how this is done.
+
+### Interpreting the suite of best models
+
+Now that we have this nice table, how do we interpret it? We must first go back to the objective of our analysis. What did we set out to do? Are we aiming to:
+
+1. Find the best model(s)?
+
+If the goal is model selection, then we should directly interpret _w_. Additionally, to compare pairs of models, we can calculate the evidence ratio between the two models, $^{rL_i}/_{rL_j}$.
+
+Ranking models on a continuum is both a boon and a bane. The 'boon' is that we don't get trapped in thinking that there is a single best model. The 'bane' is that we're used to having a single best answer!
+
+2. Generate predictions?
+
+Each model makes a prediction given new data. Each model is also estimated to have a certain probability of being the best model, i.e., _w~i~_.
+
+With a set of models--or an _ensemble_ of models-- _model-averaged predictions_ can be made.
+
+```{r}
+litter_new<-with(palm, seq(min(litter), max(litter), length.out = 1000))
+
+palm_lm_aic_modavg_sub<-model.avg(palm_lm_aic_tab_3, subset = delta < 2, fit = TRUE)
+
+palm_litter_pred<-predict(palm_lm_aic_modavg_sub, newdata = data.frame(
+  litter = litter_new,
+  canopy = 0, clay = 0, K = 0, pH = 0, sand = 0, silt = 0, species.richness = 0
+), se.fit = TRUE)
+
+litter_new_unscaled<-litter_new*sd(palm_env_unscaled$litter)+mean(palm_env_unscaled$litter)
+
+plot(palm$seedling ~ palm_env_unscaled$litter, ylab = "Seedling counts", xlab = "Leaf litter depth /cm")
+lines(exp(palm_litter_pred$fit)~litter_new_unscaled, col = "red")
+lines(exp(palm_litter_pred$fit-1.96*palm_litter_pred$se.fit)~litter_new_unscaled, col = "red", lty = 2)
+lines(exp(palm_litter_pred$fit+1.96*palm_litter_pred$se.fit)~litter_new_unscaled, col = "red", lty = 2)
+```
+
+Note that we used the subset of best models, `palm_lm_aic_modavg_subset`, for prediction. It's also possible to use _all_ the models for prediction. Or use the top models for a cumultive $\sum w$ up to 95% for prediction, etc. It all depends on how much you trust the lowest-ranked models.
+
+3. Find out which are the most important variables?
+
+This depends on what we define as "important". One definition is the _probability that the variable is in the best model_. To get this value, we can sum up the _w~i~_ of the models that contain the variable. Again, the `MuMIn` folks make this easy: 
+
+```{r}
+palm_lm_aic_modavg_full<-model.avg(palm_lm_aic_tab_3)
+
+palm_lm_aic_modavg_full$importance
+```
+
+Note that we use the full set of models, not the `palm_lm_aic_modavg_subset` earlier from the best models. Also note that, because of the rules set in determining the candidate models, the variables clay, sand and silt occurred in less models in the first place. So they did not start out with an equal probability of being in the best model, therefore it could be an unfair comparison.
+
+The less quantitative way is to look at the set of best models. Which variables appeared most often? Or even all the models? Which variables appear in the higher-ranking models?
+
+The `litter` appears in all the models in the suite of best models with $\Delta AIC_c < 2$.
+
+### Uninformative or pretending variables
+
+Looking this best models set, the simple model with only `litter` is the third-best. That means that the lower-ranked models added other variables as predictors, and yet did not contribute more explanatory power to offset the penalty of increased complexity (of two AIC points per variable). These other predictors (`canopy`, `pH`, `sand`, `silt`, `species.richness`) are therefore uninformative (Arnold 2010; Uninformative parameters and model selection using Akaike's Information Criterion. J Wildlife Manag 74:1175-1178) or 'pretending' (Anderson 2008; Model Based Inference in the Life Sciences: A Primer on Evidence. Springer). Arnold (2010)'s advice is to dismiss the models with these variables.
+
+This actually helps with model selection: we are down to three best models!
+
+### Model-averaging parameters?...
+
+There is a fourth possible objective, which is to _estimate parameters_, e.g., variables coefficients, in a model. With several instead of one best model, there are several estimates of the same parameter.
+
+Above, we demonstrated how to generate model-averaged, or ensemble, predictions. Can we also use _w~i~_ to generate a single model-averaged parameter estimate?
+
+The current advice is _not_ to do this. Instead, look at and interpret the parameter estimates in the best models. Chances are, they don't differ very much anyway.
+
+Model-averaged predictions are fine. Model-averaging parameters, however, are problematic at the moment.
+
+## Final words
+
+The `{MuMIn}` package and its `dredge()` function makes multi-model inference very convenient... perhaps too convenient. Don't let the convenience lull your mind into letting the computer do all the thinking. There are, in fact, other decisions you have to make, which means you actually have to think more rather than less carefully. What goes into the candidate model set is very critical.
+
+Let's take for example, interactions. Assume that we decided to include interactions to represent nutrient co-limitation between pairs of nutrients.
+```{r}
+palm_lm_aic_tab_4<-dredge(
+  lm(log(seedling +0.5) ~ canopy + litter + pH + moisture + sand + silt + clay + N + P + K + species.richness + N:P + P:K + N:K, data = palm, na.action = "na.pass"),
+  m.lim = c(0, 4), subset = !(sand&silt) & !(silt&clay) & !(sand&clay) &
+    dc(N&P, N:P) & dc(P&K, P:K) & dc(N&K, N:K), extra = "R^2"
+)
+```
+```{r results='asis', echo=FALSE}
+knitr::kable(subset(data.frame(palm_lm_aic_tab_4), delta<2))
+```
+
+The results appear to have changed substantially...
+
+Also, don't forget to check the model diagnostics. The problem is, which model do you check? If a full model is part of the candidate model set, you can check the full model. Alternatively, you can also pick one of the best models after model ranking to check. If remedial actions such as transformation is needed, do it, and then re-fit and re-rank the models again. Iterative fitting and checking is part-and-parcel of data analysis. In this session, I said to ignore some disturbing aspects of the residual plot and histogram. If I dealt with these, the results of the model selection may again be different...
+
+It is important to know what your objectives are.
+
+- Is it to choose the best model?
+
+- Is it to generate predictions?
+
+- Is it to determine what variables are important?
+
+Model selection seems indistinguishable from variable selection, but they are not exactly the same thing.
+
+Model-averaging predictions is legitimate; parameter estimation is also a legitimate goal; but model-averaged parameter estimates are not.

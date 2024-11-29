@@ -1,0 +1,237 @@
+---
+title: "GIS analysis in R"
+output:
+  html_notebook: default
+---
+
+#Introduction
+
+It is now relatively easy to carry out GIS analyses in `R`, when before most people used plug-ins (some of which require a fee) and model-building in software such as ArcGIS.
+
+With a combination of QGIS and R, the input and analysis of spatial data is completely free. Having the data extraction scripted in R also allows seamless integration with statistical analysis. In the past, this was possible in Python, but with R having the same capabilities (that is also getting increasingly user-friendly), one does not need to learn yet *another* programming language.
+
+##Libraries
+
+These are some of the libraries needed to load and analyse GIS layers in R.
+
+```{r}
+library(rgdal) # Also loads the {sp} package
+library(rgeos)
+library(raster)
+```
+
+##Loading GIS layers
+
+To read the GIS layer, you have to supply at least two arguments to the `readOGR()` function.
+
+```{r}
+points.ly<-readOGR(".//GIS", "sampling points")
+trees.ly<-readOGR(".//GIS", "trees")
+roads.ly<-readOGR(".//GIS", "roads")
+shrubs.ly<-readOGR(".//GIS", "shrubs")
+
+```
+
+With ESRI .SHP files, the first argument is the directory where your files are contained, so you may have to edit this a bit depending on how you stored the files. The second argument would be the filename(s) for the set of shapefiles, without the extension(s), i.e., ".shp".
+
+Depending on the format of your GIS layer (i.e., GoogleEart .KML files instead of .SHP files, etc.), the two arguments vary a little in their required inputs.
+
+##Visualization
+
+Just as you would do a quick look at datasets you read into R, e.g., with the `head()` or `str()` functions, you should take quick look at the GIS layers you read--by plotting a quick map! This is just using the generic graphical function `plot()`; to plot a series of layers in the same plot, subsequent `plot()` calls need the `add = TRUE` argument.
+
+```{r}
+plot(trees.ly, pch = 1, col = "green")
+plot(shrubs.ly, add = TRUE, col = "darkgreen", border = NA)
+plot(roads.ly, add = TRUE, col = "red", lwd=2)
+plot(points.ly, pch = 4, add = TRUE)
+```
+
+#Introduction to spatial objects
+
+The layers are read and saved as spatial objects, i.e., a set of *geometric features* with a *projection system*. It may also have a data.frame of *attributes* for each feature.
+
+##Projection system
+
+The projection system provides a reference system so that we can know the position of any object relative to each other and also anything else on the surface of the Earth.
+
+A good practice is to *always* check the projection system immediately after reading a GIS file.
+
+```{r}
+proj4string(points.ly); proj4string(trees.ly); proj4string(shrubs.ly); proj4string(roads.ly)
+```
+
+They're in the projection system we want, which is good. Otherwise, you would have had to choose one of the layers to be the projection system for all the other layers, and transform everything to it, i.e., the "on-the-fly projection" feature in QGIS.
+
+```{r eval = FALSE}
+proj_utm<-proj4string(points.ly)
+trees.ly<-spTransform(trees.ly, CRS = CRS(proj_utm))
+canopy.ly<-spTransform(shrubs.ly, CRS = CRS(proj_utm))
+road.ly<-spTransform(roads.ly, CRS = CRS(proj_utm))
+```
+
+The Universal Transverse Mercator (UTM) coordinate reference system is usually preferred, because the coordinates allow direct calculation of distances, area, etc., in metres. For Singapore, our zone/grid is 48N and WGS84.
+
+##Geometries
+
+There are three basic types of geometries: *points* (zero dimensions), *lines* (each segment one-dimensional, although a series of lines joined from end to end, i.e., a *polyline*, can be spread over two or more dimensions), and *polygons* (two-dimensional). It is possible to have three dimensions, i.e., a polyhedral, but we don't have to worry about that now, especially when Singapore is relatively flat with little variation in altitude.
+
+Therefore, there are also three types of spatial objects: `SpatialPoints`, `SpatialLines`, and `SpatialPolygons`. Spatial objects are essentially a collection of geometries with a coordinate reference system.
+
+Just as with vectors, etc., you can check the `class()` and `length()` of a spatial object. The length is the number of features in the object.
+
+```{r}
+class(points.ly); class(trees.ly); class(shrubs.ly); class(roads.ly)
+length(points.ly); length(trees.ly); length(shrubs.ly); length(roads.ly)
+```
+
+#Attributes
+
+Each feature can then have attributes. In ArcGIS and QGIS, there is the attribute table. Likewise in R, and can be accessed with the `@data` slot.
+
+```{r}
+head(points.ly@data)
+```
+
+```{r}
+head(trees.ly@data)
+```
+
+```{r}
+head(shrubs.ly@data)
+```
+
+```{r}
+head(roads.ly@data)
+```
+
+The no. of lanes is a factor for some reason, so we want to convert it to a number to use in calculations later. Note to BIRT team: is it also just *one side* of the road? If so, I'm multiplying by two here.
+
+```{r}
+roads.ly$Lanes<-as.numeric(as.character(roads.ly$Lanes))*2
+```
+
+#Basic GIS functions
+
+In this data set, there are seven sampling points.
+
+##Buffers
+
+Let's say we want to extract landscape data from a circular area, i.e., a *buffer*, within a radius of 50 m of each point.
+
+```{r}
+points_buffer50<-gBuffer(points.ly, byid = TRUE, width = 50)
+
+plot(trees.ly, pch = 1, col = "green")
+plot(shrubs.ly, add = TRUE, col = "darkgreen", border = NA)
+plot(roads.ly, add = TRUE, col = "red", lwd=2)
+plot(points_buffer50, add = TRUE)
+```
+
+As you can see, we will have to find what is within the 50-m radius buffer (which, remember, is a polygon) before extracting the environmental variables. Let's try this with trees (which are points).
+
+The function `intersect()` from the `{raster}` package finds the intersection between the two geometries provided, and combines the attributes from both spatial objects for each feature.
+
+```{r}
+trees_buffer50<-intersect(trees.ly, points_buffer50)
+
+plot(trees.ly, col = "gray", pch=1)
+plot(trees_buffer50, col="green", pch = 1, add = TRUE)
+plot(points_buffer50, border = "gray", add = TRUE)
+```
+
+```{r}
+head(trees_buffer50)
+```
+
+Say we want the number of trees of each tree species within each 50-m buffer.
+
+```{r}
+table(trees_buffer50$Point_ID)
+```
+
+We can also cross-tabulate the `Point_ID` with the tree `Species`.
+
+```{r}
+trees_buffer50.com<-xtabs(~Point_ID+Species, data=trees_buffer50@data)
+trees_buffer50.com[,1:6]
+```
+
+This is like a community matrix; so we can extract, e.g., the number of tree species, or diversity index of trees, using functions from the library `{vegan}`.
+
+```{r}
+library(vegan)
+
+specnumber(trees_buffer50.com)
+diversity(trees_buffer50.com, index = "shannon")
+```
+
+These can all be used as variables in statistical analysis!
+
+Let's now try doing this with shrubs, i.e., polygons over polygons.
+
+```{r}
+shrubs_buffer50<-intersect(shrubs.ly, points_buffer50)
+
+plot(shrubs.ly, col="gray", border=NA)
+plot(shrubs_buffer50, col="darkgreen", border="darkgreen", add = TRUE)
+plot(points_buffer50, border = "gray", add = TRUE)
+```
+
+I want the shrub polygons to be *clipped* so that those areas outside the buffer are excluded.
+
+If the information we want about the shrubs are related to the area, we need to calculate the area of each shrub polygon.
+
+```{r}
+shrubs_buffer50$Area<-gArea(shrubs_buffer50, byid = TRUE)
+
+head(shrubs_buffer50@data)
+```
+
+You can now get the total area of shrubs within the buffer.
+
+```{r}
+with(shrubs_buffer50@data, tapply(Area, Point_ID, sum))
+```
+
+And also cross-tabulate shrub `Species` by `Point_ID` to calculate diversity, etc.
+
+```{r}
+shrubs_buffer50.com<-xtabs(Area~Point_ID+Species, data=shrubs_buffer50)
+
+diversity(shrubs_buffer50.com, index = "shannon")
+```
+
+Finally, with lines. Say we want to calculate an index of road lane density *sensu* Chong et al. (2014; *Biological Conservation*),
+
+$$\frac{\sum l \times n}{A}$$
+We need to
+
+1. Clip the roads to the buffer, if it has not been done yet;
+
+2. Calculate the length of each road segment with the `gLength()` function;
+
+3. Calculate $\sum l \times n$ where $n$ is the number of road lanes in each road segment;
+
+4. Divide by the area of the buffer, $A = \pi \times 50^2$.
+
+```{r}
+roads_buffer50<-intersect(roads.ly, points_buffer50)
+
+roads_buffer50@data$length<-gLength(roads_buffer50, byid=TRUE)
+
+lengthxlanes<-with(roads_buffer50@data, Lanes * length)
+lengthxlanes.sum<-tapply(lengthxlanes, roads_buffer50@data$Point_ID, sum)
+
+lengthxlanes.sum/(pi*50^2)
+```
+
+The units is m/m^2^.
+
+#If there is time...
+
+1. Subsetting features in a spatial object, e.g., for plotting.
+
+2. Calculate distances between features, e.g., for generalized least squares analysis.
+
+3. Combining two or more spatial objects.
