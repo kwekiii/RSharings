@@ -1,0 +1,267 @@
+---
+title: "Refresher/crash course in basic R and tidyverse"
+author: "Chong Kwek Yan"
+date: "2024-12-17"
+output: html_document
+---
+
+# Really basic basics
+
+R as a calculator:
+
+```{r}
+1 + 2
+```
+
+```{r}
+(1 - 2 * 3) / 4
+```
+
+```{r}
+5 ^ 2
+```
+
+You can press the up arrow to go back again and edit the previous commands.
+
+Use `<-` or `->` to assign the output to an 'object'.
+
+```{r}
+a <- 12345
+b <- 54321
+c <- a + b
+
+my.calculation <- c / a + b
+```
+
+You can then recall the object `my.calculation`.
+
+If you assign the output to an object, there will be no feedback output in the console.
+
+Spaces between operators don't matter, but note that R is caps-sensitive.
+
+```{r}
+My.Calculation <- a/(c+b)
+
+my.calculation; My.Calculation
+```
+
+A 'function' runs a scripted bunch of calculations given 'arguments' which are the instructions:
+
+```{r}
+sum(a, b, c)
+```
+
+```{r}
+sqrt(25)
+```
+
+$e^x$ with Euler's number, $e$, as the base:
+
+```{r}
+exp(2)
+```
+
+Logarithm with base 10:
+
+```{r}
+log10(a)
+```
+
+Logarithm specifying base 2:
+
+```{r}
+log(a, base = 2)
+```
+
+Otherwise the default base is Euler's number, i.e., $ln$). To find out how to use a function, what are the arguments, what are the default values for the arguments, etc., call up the help page by typing `?log`.
+
+To find out which function to use to do something, just [Google](www.google.com)!
+
+# Types of objects
+
+A vector is a series of elements.
+
+```{r}
+c(a, b, c, 11, 22, 33)
+```
+
+Some functions are helpful for generating vectors:
+```{r}
+50:70
+```
+
+```{r}
+seq(from = 1, to = 10, by = 0.1)
+```
+
+Note that you can omit the names of arguments if you specify them according to their default sequence in the function. But if not, e.g., if you skip an argument, then you must specify the argument name.
+
+```{r}
+seq(1, 10, length.out = 10)
+```
+
+```{r}
+rep(NA, 10)
+```
+
+You can string up vectors in sequence:
+
+```{r}
+c(rep(1, 3), rep(2,3))
+```
+
+You can store vectors as objects and then perform calculations:
+
+```{r}
+y <- c(a, b, c, 11, 22, 33)
+x1 <- c(rep(1, 3), rep(2,3))
+
+y+x1
+```
+
+But not all vectors must consist of numbers.
+
+```{r}
+class(y)
+```
+
+```{r}
+z <- c("hello", "how", "are", "you", "thank", "you")
+
+class(z)
+```
+
+Data usually looks more familiar in the form of a table:
+
+```{r}
+eg.matrix <- cbind(y, x1)
+
+eg.matrix
+```
+
+Note that a "matrix" in R means a table where all the elements are of the same 'class', e.g., `numeric` or `character`. If you have a mix of columns of different classes, you will be making a `data.frame`.
+
+```{r}
+eg.data <- data.frame(y, z)
+
+eg.data
+```
+
+```{r}
+class(eg.matrix); class(eg.data)
+```
+
+You can use square brackets to select specific rows, columns, and cells in the matrix or data frame.
+
+```{r}
+eg.matrix[1,]
+```
+
+```{r}
+eg.matrix[,2]
+```
+
+```{r}
+eg.matrix[1,2]
+```
+
+You can also use the header name to select columns.
+
+For matrices,
+```{r}
+eg.data[,"y"]
+```
+
+For data frames, there are more options
+
+```{r}
+eg.data$y
+```
+
+```{r}
+eg.data["y"]
+```
+
+To bind tables by columns:
+
+```{r}
+cbind(eg.matrix, eg.data)
+```
+
+But this only works if there are equal numbers of rows in the tables.
+
+Combining rows:
+
+```{r}
+rbind(eg.matrix, eg.matrix)
+```
+
+But this only works if there are equal number of columns *and* the column names are the same.
+
+```{r eval=FALSE}
+rbind(eg.matrix, eg.data)
+```
+
+You can also directly a new column by creating it using a name.
+```{r}
+eg.data$x1 <- eg.matrix[,"x1"]
+
+eg.data
+```
+
+Matrices or data frames must be "rectangular", i.e., each column has the same number of elements.
+
+If you have a bunch of very different things, e.g., vectors of different lengths, or several tables, you can still group them together within a single object, called a `list`.
+
+```{r}
+eg.list <- list(eg.data, eg.matrix)
+```
+
+Lists can be very complicated, e.g., lists nested within lists.
+
+You can name each part of a list, e.g., at the point of making the list:
+
+```{r}
+eg.list <- list(eg.data = eg.data, eg.matrix = eg.matrix)
+```
+
+You can then extract the parts by calling the name with the `$` sign:
+
+```{r}
+eg.list$eg.data
+```
+
+Or you can assign the names later. Here I'm showing how you can use names with spaces in it. But to call such parts of objects with spaces, you have to enclose them within `` ``.
+
+```{r}
+names(eg.list) <- c("example data", "example matrix")
+
+eg.list$`example data`
+```
+
+Only parts of objects, e.g., columns of data frames or a list element, can have spaces in the names. Objects in the namespace of R cannot have spaces in the name.
+
+# R projects and the .RProj file
+
+Finding out or setting the working directory is a critical first step in using R. Most basic R courses will teach you to use `setwd()`. But more often than not, this sets what is called an "absolute path" which most likely only works on your computer while being at least slightly different on someone else's computer.
+
+Alternatively, you may be taught to click Session > Set Working Directory... but if you share your stuff with someone else, you need to separately explain where you set this working directory.
+
+There are better ways that facilitate collaborative work. One of these ways is to always create an R project instead, by File > New Project...
+
+Download any one of [my public repositories](https://github.com/kwekiii) as an example, e.g., [RSharings](https://github.com/kwekiii/RSharings).
+
+Double-click on the file with the .RProj extension to open up an R session where the working directory is automatically where the .RProj file is.
+
+# The .csv file
+
+
+
+```{r}
+
+
+```
+
+
+
+
