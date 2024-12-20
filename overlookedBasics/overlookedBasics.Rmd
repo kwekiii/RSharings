@@ -23,6 +23,8 @@ R as a calculator:
 
 You can press the up arrow to go back again and edit the previous commands.
 
+However, a good habit is to start a .R script file every time especially when you know you are going to be writing many commands.
+
 Use `<-` or `->` to assign the output to an 'object'.
 
 ```{r}
@@ -231,7 +233,7 @@ You can then extract the parts by calling the name with the `$` sign:
 eg.list$eg.data
 ```
 
-Or you can assign the names later. Here I'm showing how you can use names with spaces in it. But to call such parts of objects with spaces, you have to enclose them within `` ``.
+Or you can assign the names later. Here I'm showing how you can use names with spaces in it. But to call such parts of objects with spaces, you have to enclose them within `.
 
 ```{r}
 names(eg.list) <- c("example data", "example matrix")
@@ -255,13 +257,184 @@ Double-click on the file with the .RProj extension to open up an R session where
 
 # The .csv file
 
+One popular way to store data as tables is in the format of "comma separated variables", or a .csv file. Each cell in this table is separated by the cell on its right by a comma; empty cells are a consecutive series of commas. A new row is a new line. You can open such a file in any text editor (e.g., Notepad) to see this. The main advantage of a .csv file is its simplicity and so will likely be useable across different software and in the future.
 
-
-```{r}
-
-
+```{r eval=FALSE}
+palm <- read.csv("./data/palm.csv")
 ```
 
+The "." means where the working directory is. Subfolders are then indicated by "/". Note that this is the forward slash, not the back slash. You can also use double back-slashes.
 
+```{r echo=FALSE}
+palm <- read.csv("../data/palm.csv")
+```
 
+One drawback of .csv files is that the contents of the cells cannot have any commas in them or they will be interpreted to be column breaks. That row may then have more columns that other rows and R will return an error trying to read the file.
 
+See `?read.csv` for other arguments that can be used (some of which are listed under `read.table()`).
+
+The contents of the .csv file is read as a `data.frame`, so you can call columns using the column names.
+
+Aside from numeric or character, there are other classes of vectors.
+
+```{r}
+class(palm$seedling)
+```
+
+You can also create a logical vector using conditions:
+
+```{r}
+palm$position == "Edge"
+```
+
+```{r}
+palm$seedling > 0
+```
+
+```{r}
+palm$litter >= 1.0
+```
+
+```{r}
+palm$forest != "Bedok_reservoir"
+```
+
+Logical vectors can then be used to filter for a subset rows (or columns), i.e., only those that are TRUE will be selected.
+
+```{r}
+palm[palm$forest != "Bedok_reservoir",]
+```
+
+# Functions and loops
+
+(Skipped.)
+
+# Libraries
+
+Any R user can publish a 'package' of their functions. Such a package is called a 'library'. To install a package officially published on the R repository (called CRAN),
+
+```{r eval=FALSE}
+install.packages("novelforestSG")
+install.packages("tidyverse")
+```
+
+To load the package:
+```{r}
+library(novelforestSG)
+library(tidyverse)
+```
+
+The `novelforestSG` package loads an object, `novelforest_data`, that is actually a list of several tables.
+
+```{r}
+names(novelforest_data)
+```
+
+The `tidyverse` package actually contains many packages which have functions that allow a different way of doing things from 'base' R (i.e., the core R without any libraries). For example, if you had wanted to create a new column of the basal area of each stem from its DBH:
+
+```{r eval=FALSE}
+novelforest_data$trees$basalArea <- pi * (novelforest_data$trees$dbh_2011/2)^2
+```
+
+With `tidyverse`, you can use the mutate function:
+
+```{r}
+mutate(novelforest_data$trees, basalArea = pi * (dbh_2011/2)^2)
+```
+
+If you wanted to filter for certain rows,
+
+```{r eval=FALSE}
+filter(novelforest_data$trees, species == "Hevea brasiliensis")
+```
+
+If you want to select only certain columns,
+
+```{r eval=FALSE}
+select(novelforest_data$trees, -c("stem"))
+# or just -stem if there's only one to exclude
+```
+
+You can also rename columns.
+
+```{r}
+rename(novelforest_data$trees, DBH = dbh_2011)
+```
+
+One of the features with `tidyverse` is the 'pipe', which allows you to chain several functions in series. The output of the earlier function is taken to be the first argument of the next function.
+
+```{r}
+novelforest_data$trees %>%
+  mutate(basalArea = pi * (dbh_2011/2)^2) %>%
+  filter(species == "Hevea brasiliensis") %>%
+  group_by(plot) %>%
+  summarise(totBasalArea_rubber = sum(basalArea))
+```
+
+The `group_by()` function is often followed by the `summarise()` that applies a particular set of calculations to each level in the group.
+
+```{r}
+novelforest_data$plots %>%
+  group_by(plot) %>%
+  summarise(canopy_mean = mean(canopy),
+            litter_mean = mean(litter))
+```
+
+Another very useful function in `tidyverse` is `pivot_wider()` (and its reverse, `pivot_longer`).
+
+```{r}
+novelforest_data$pres %>%
+  select(-patch) %>%
+  distinct() %>%
+  mutate(pres = 1) %>%
+  pivot_wider(names_from = species,
+              values_from = pres)
+```
+
+The last `tidyverse` functions to introduce are the 'joins' which merges tables together based on one or more shared columns.
+
+```{r}
+plot_sumRubber <- novelforest_data$trees %>%
+  mutate(basalArea = pi * (dbh_2011/2)^2) %>%
+  filter(species == "Hevea brasiliensis") %>%
+  group_by(plot) %>%
+  summarise(totBasalArea_rubber = sum(basalArea))
+
+plot_meanEnv <- novelforest_data$plots %>%
+  group_by(plot) %>%
+  summarise(canopy_mean = mean(canopy),
+            litter_mean = mean(litter))
+
+full_join(plot_sumRubber, plot_meanEnv, by = "plot")
+```
+
+There are other joins, such as `left_join` or `inner_join`, that differ in terms of how rows that don't have a match in either of the tables are treated.
+
+One of the best things about tidyverse is the use of pipes to chain up a series of functions so that only one object is produced.
+
+```{r}
+novelforest_data$trees %>%
+  mutate(basalArea = pi * (dbh_2011/2)^2) %>%
+  filter(species == "Hevea brasiliensis") %>%
+  group_by(plot) %>%
+  summarise(totBasalArea_rubber = sum(basalArea)) %>%
+  full_join(novelforest_data$plots %>%
+    group_by(plot) %>%
+    summarise(canopy_mean = mean(canopy),
+              litter_mean = mean(litter)),
+    by = "plot")
+```
+
+# Save, load, and source
+
+You can export tables using the `write.csv()` function. However, if you have several objects that you want to save together to be used together, or lists that cannot be exported as .csv tables, you can save an .RData file using save().
+
+You can then load the .RData file using load(). When you do so, all the objects in the .RData file are loaded with the same names that they were saved with.
+
+If you have a single object that you want to allow others to decide for themselves what names to use, you can save them with `saveRDS()` which saves an .RDS file.
+
+# Last thing: R Markdown notebooks
+
+This was written as an R Markdown notebook which allows text to be interspersed with 'chunks' of code.
+
+One important thing about R notebooks is that the default working directory is **not** where the .RProj file is located; it is where the [.Rmd](https://github.com/kwekiii/RSharings/blob/master/overlookedBasics/overlookedBasics.Rmd) file is located. So you will have to specify the file paths from which to read or write data accordingly. Use `..` to go up one level in the file hierarchy.
